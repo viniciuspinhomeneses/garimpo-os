@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_KEY;
+const APP_PASSWORD = import.meta.env.VITE_APP_PASSWORD;
 
 const STATUS_CONFIG = {
   Aberta:         { color: "#94a3b8", bg: "#1e293b", label: "Aberta",       icon: "○" },
@@ -52,6 +53,55 @@ async function extractOSFromImage(base64, mediaType) {
   });
   if (!response.ok) throw new Error('Erro no servidor: ' + response.status);
   return await response.json();
+}
+
+function LoginScreen({ onLogin }) {
+  const [pwd, setPwd] = useState("");
+  const [error, setError] = useState(false);
+
+  const handleSubmit = () => {
+    if (pwd === APP_PASSWORD) {
+      sessionStorage.setItem("garimpo_auth", "1");
+      onLogin();
+    } else {
+      setError(true);
+      setPwd("");
+      setTimeout(() => setError(false), 2000);
+    }
+  };
+
+  return (
+    <div style={{ minHeight: "100vh", background: "#030812", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ background: "#060c18", border: "1px solid #1e293b", borderRadius: 16, padding: 48, width: "100%", maxWidth: 380, textAlign: "center" }}>
+        <div style={{ width: 56, height: 56, borderRadius: 14, background: "linear-gradient(135deg, #f8c 0%, #f59e0b 100%)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, margin: "0 auto 20px" }}>💎</div>
+        <div style={{ color: "#e2e8f0", fontFamily: "'Playfair Display', serif", fontSize: 22, fontWeight: 700, marginBottom: 4 }}>Garimpo Jóias</div>
+        <div style={{ color: "#475569", fontSize: 11, fontFamily: "'DM Mono', monospace", letterSpacing: "0.1em", marginBottom: 32 }}>CONTROLE DE OS</div>
+        <input
+          type="password"
+          value={pwd}
+          onChange={e => setPwd(e.target.value)}
+          onKeyDown={e => e.key === "Enter" && handleSubmit()}
+          placeholder="Senha de acesso"
+          style={{
+            width: "100%", background: "#0a0f1a",
+            border: `1px solid ${error ? "#ef4444" : "#1e293b"}`,
+            borderRadius: 8, padding: "12px 16px", color: "#e2e8f0",
+            fontFamily: "'DM Mono', monospace", fontSize: 14,
+            boxSizing: "border-box", outline: "none", marginBottom: 12,
+            transition: "border-color 0.2s",
+          }}
+        />
+        {error && <div style={{ color: "#ef4444", fontSize: 12, fontFamily: "'DM Mono', monospace", marginBottom: 12 }}>Senha incorreta</div>}
+        <button onClick={handleSubmit} style={{
+          width: "100%", padding: "12px 0",
+          background: "linear-gradient(135deg, #f8c 0%, #f59e0b 100%)",
+          border: "none", borderRadius: 8, color: "#060c18",
+          fontFamily: "'DM Mono', monospace", fontSize: 13, fontWeight: 700,
+          cursor: "pointer", letterSpacing: "0.04em",
+        }}>ENTRAR</button>
+      </div>
+    </div>
+  );
 }
 
 function StatusBadge({ status, small }) {
@@ -188,9 +238,7 @@ function UploadModal({ onClose, onSave }) {
                   </div>
                 )
               }
-              {preview2 && (
-                <button onClick={() => input2Ref.current.click()} style={{ background: "#1e293b", border: "none", color: "#94a3b8", padding: "5px 12px", borderRadius: 5, cursor: "pointer", fontFamily: "'DM Mono', monospace", fontSize: 11 }}>Trocar foto</button>
-              )}
+              {preview2 && <button onClick={() => input2Ref.current.click()} style={{ background: "#1e293b", border: "none", color: "#94a3b8", padding: "5px 12px", borderRadius: 5, cursor: "pointer", fontFamily: "'DM Mono', monospace", fontSize: 11 }}>Trocar foto</button>}
               <input ref={input2Ref} type="file" accept="image/*" capture="environment" style={{ display: "none" }} onChange={e => handleFile2(e.target.files[0])} />
             </div>
             <div>
@@ -263,6 +311,7 @@ function OSDetail({ os, onStatusChange, onDelete, onClose }) {
 }
 
 export default function App() {
+  const [auth, setAuth] = useState(() => sessionStorage.getItem("garimpo_auth") === "1");
   const [osList, setOsList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -272,10 +321,13 @@ export default function App() {
   const [search, setSearch] = useState("");
 
   useEffect(() => {
+    if (!auth) return;
     db.list()
       .then(data => { setOsList(data || []); setLoading(false); })
       .catch(e => { setError(e.message); setLoading(false); });
-  }, []);
+  }, [auth]);
+
+  if (!auth) return <LoginScreen onLogin={() => setAuth(true)} />;
 
   const handleStatusChange = async (id, newStatus) => {
     setOsList(list => list.map(os => os.id === id ? { ...os, status: newStatus } : os));
@@ -330,6 +382,7 @@ export default function App() {
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             {!loading && !error && <span style={{ color: "#10b981", fontSize: 10, fontFamily: "'DM Mono', monospace" }}>● BANCO CONECTADO</span>}
+            <button onClick={() => { sessionStorage.removeItem("garimpo_auth"); setAuth(false); }} style={{ background: "none", border: "1px solid #1e293b", color: "#475569", padding: "5px 12px", borderRadius: 6, cursor: "pointer", fontFamily: "'DM Mono', monospace", fontSize: 11 }}>Sair</button>
             <button onClick={() => setShowUpload(true)} style={{ display: "flex", alignItems: "center", gap: 8, background: "linear-gradient(135deg, #f8c 0%, #f59e0b 100%)", border: "none", borderRadius: 7, padding: "8px 16px", color: "#060c18", fontFamily: "'DM Mono', monospace", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>📸 NOVA OS</button>
           </div>
         </div>
