@@ -32,6 +32,7 @@ const db = {
   list: () => sbFetch("/ordens_servico?order=created_at.desc"),
   insert: (data) => sbFetch("/ordens_servico", { method: "POST", body: JSON.stringify(data) }),
   update: (id, data) => sbFetch(`/ordens_servico?id=eq.${id}`, { method: "PATCH", body: JSON.stringify(data), prefer: "return=minimal" }),
+  delete: (id) => sbFetch(`/ordens_servico?id=eq.${id}`, { method: "DELETE", prefer: "return=minimal" }),
 };
 
 function toBase64(file) {
@@ -106,8 +107,10 @@ function UploadModal({ onClose, onSave }) {
   const [phase, setPhase] = useState("idle");
   const [editData, setEditData] = useState({});
   const [preview, setPreview] = useState(null);
+  const [preview2, setPreview2] = useState(null);
   const [errorMsg, setErrorMsg] = useState("");
   const inputRef = useRef();
+  const input2Ref = useRef();
 
   const handleFile = useCallback(async (file) => {
     if (!file) return;
@@ -124,6 +127,13 @@ function UploadModal({ onClose, onSave }) {
     }
   }, []);
 
+  const handleFile2 = useCallback(async (file) => {
+    if (!file) return;
+    setPreview2(URL.createObjectURL(file));
+    const base64 = await toBase64(file);
+    setEditData(d => ({ ...d, foto_peca_base64: base64, foto_peca_type: file.type || "image/jpeg" }));
+  }, []);
+
   const F = (key, label, textarea) => (
     <div style={{ marginBottom: 10 }}>
       <label style={{ color: "#64748b", fontSize: 11, fontFamily: "'DM Mono', monospace", display: "block", marginBottom: 3 }}>{label}</label>
@@ -136,7 +146,7 @@ function UploadModal({ onClose, onSave }) {
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "#00000090", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 999, padding: 20 }}>
-      <div style={{ background: "#060c18", border: "1px solid #1e293b", borderRadius: 12, width: "100%", maxWidth: 780, maxHeight: "90vh", overflow: "auto", padding: 28 }}>
+      <div style={{ background: "#060c18", border: "1px solid #1e293b", borderRadius: 12, width: "100%", maxWidth: 860, maxHeight: "90vh", overflow: "auto", padding: 28 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
           <span style={{ color: "#e2e8f0", fontFamily: "'Playfair Display', serif", fontSize: 18, fontWeight: 700 }}>Nova OS — Leitura por IA</span>
           <button onClick={onClose} style={{ background: "none", border: "none", color: "#64748b", fontSize: 20, cursor: "pointer" }}>✕</button>
@@ -165,7 +175,24 @@ function UploadModal({ onClose, onSave }) {
         )}
         {phase === "review" && (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
-            <div>{preview && <img src={preview} alt="OS" style={{ width: "100%", borderRadius: 8, border: "1px solid #1e293b" }} />}</div>
+            <div>
+              <div style={{ color: "#475569", fontSize: 10, fontFamily: "'DM Mono', monospace", marginBottom: 6 }}>FOTO DA OS</div>
+              {preview && <img src={preview} alt="OS" style={{ width: "100%", borderRadius: 8, border: "1px solid #1e293b", marginBottom: 12 }} />}
+              <div style={{ color: "#475569", fontSize: 10, fontFamily: "'DM Mono', monospace", marginBottom: 6 }}>FOTO DA PEÇA (opcional)</div>
+              {preview2
+                ? <img src={preview2} alt="Peça" style={{ width: "100%", borderRadius: 8, border: "1px solid #1e293b", marginBottom: 8 }} />
+                : (
+                  <div onClick={() => input2Ref.current.click()} style={{ border: "2px dashed #1e293b", borderRadius: 8, padding: 20, textAlign: "center", cursor: "pointer", marginBottom: 8 }}>
+                    <div style={{ fontSize: 24, marginBottom: 4 }}>📷</div>
+                    <div style={{ color: "#475569", fontSize: 11, fontFamily: "'DM Mono', monospace" }}>Adicionar foto da peça</div>
+                  </div>
+                )
+              }
+              {preview2 && (
+                <button onClick={() => input2Ref.current.click()} style={{ background: "#1e293b", border: "none", color: "#94a3b8", padding: "5px 12px", borderRadius: 5, cursor: "pointer", fontFamily: "'DM Mono', monospace", fontSize: 11 }}>Trocar foto</button>
+              )}
+              <input ref={input2Ref} type="file" accept="image/*" capture="environment" style={{ display: "none" }} onChange={e => handleFile2(e.target.files[0])} />
+            </div>
             <div>
               <div style={{ color: "#10b981", fontFamily: "'DM Mono', monospace", fontSize: 11, marginBottom: 14 }}>✓ Campos extraídos — revise antes de salvar</div>
               {F("numero", "Nº OS")}{F("cliente", "Cliente")}{F("fone", "Telefone")}
@@ -184,7 +211,8 @@ function UploadModal({ onClose, onSave }) {
   );
 }
 
-function OSDetail({ os, onStatusChange, onClose }) {
+function OSDetail({ os, onStatusChange, onDelete, onClose }) {
+  const [confirmDelete, setConfirmDelete] = useState(false);
   if (!os) return null;
   const cfg = STATUS_CONFIG[os.status] || STATUS_CONFIG["Aberta"];
   return (
@@ -207,9 +235,28 @@ function OSDetail({ os, onStatusChange, onClose }) {
           </div>
         ))}
       </div>
-      <div>
+      <div style={{ marginBottom: 16 }}>
         <div style={{ color: "#475569", fontSize: 10, fontFamily: "'DM Mono', monospace", marginBottom: 4 }}>Descrição do serviço</div>
         <div style={{ color: "#e2e8f0", fontSize: 13, fontFamily: "'DM Mono', monospace", lineHeight: 1.6, background: "#0a0f1a", padding: 12, borderRadius: 6, border: "1px solid #1e293b" }}>{os.descricao}</div>
+      </div>
+      {os.foto_peca_base64 && (
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ color: "#475569", fontSize: 10, fontFamily: "'DM Mono', monospace", marginBottom: 6 }}>FOTO DA PEÇA</div>
+          <img src={`data:${os.foto_peca_type || "image/jpeg"};base64,${os.foto_peca_base64}`} alt="Peça" style={{ width: "100%", borderRadius: 8, border: "1px solid #1e293b" }} />
+        </div>
+      )}
+      <div style={{ marginTop: 20, borderTop: "1px solid #1e293b", paddingTop: 16 }}>
+        {!confirmDelete ? (
+          <button onClick={() => setConfirmDelete(true)} style={{ background: "none", border: "1px solid #ef444440", color: "#ef4444", padding: "6px 14px", borderRadius: 6, cursor: "pointer", fontFamily: "'DM Mono', monospace", fontSize: 11 }}>
+            🗑 Excluir OS
+          </button>
+        ) : (
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ color: "#ef4444", fontSize: 12, fontFamily: "'DM Mono', monospace" }}>Confirma exclusão?</span>
+            <button onClick={() => onDelete(os.id)} style={{ background: "#ef4444", border: "none", color: "#fff", padding: "5px 14px", borderRadius: 5, cursor: "pointer", fontFamily: "'DM Mono', monospace", fontSize: 11, fontWeight: 700 }}>Sim, excluir</button>
+            <button onClick={() => setConfirmDelete(false)} style={{ background: "#1e293b", border: "none", color: "#94a3b8", padding: "5px 14px", borderRadius: 5, cursor: "pointer", fontFamily: "'DM Mono', monospace", fontSize: 11 }}>Cancelar</button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -234,6 +281,14 @@ export default function App() {
     setOsList(list => list.map(os => os.id === id ? { ...os, status: newStatus } : os));
     if (selectedOS?.id === id) setSelectedOS(prev => ({ ...prev, status: newStatus }));
     try { await db.update(id, { status: newStatus }); } catch (e) { console.error(e); }
+  };
+
+  const handleDelete = async (id) => {
+    try {
+      await db.delete(id);
+      setOsList(list => list.filter(os => os.id !== id));
+      setSelectedOS(null);
+    } catch (e) { alert("Erro ao excluir: " + e.message); }
   };
 
   const handleSaveNew = async (data) => {
@@ -305,7 +360,7 @@ export default function App() {
             </div>
             {selectedOS && (
               <div style={{ padding: 20, overflowY: "auto" }}>
-                <OSDetail os={selectedOS} onStatusChange={handleStatusChange} onClose={() => setSelectedOS(null)} />
+                <OSDetail os={selectedOS} onStatusChange={handleStatusChange} onDelete={handleDelete} onClose={() => setSelectedOS(null)} />
               </div>
             )}
           </div>
