@@ -1,6 +1,3 @@
-Vou atualizar o `App.jsx` com edição inline no painel de detalhe. O botão "Salvar alterações" aparece quando qualquer campo for modificado.
-
-```jsx
 import { useState, useRef, useCallback, useEffect } from "react";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
@@ -557,6 +554,3 @@ export default function App() {
     </>
   );
 }
-```
-
-Cola no GitHub, commit. O botão **"Salvar alterações"** aparece automaticamente quando qualquer campo for modificado no painel lateral.
