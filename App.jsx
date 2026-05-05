@@ -45,8 +45,23 @@ const db = {
   usuarios: { list: () => sbFetch("/usuarios?select=id,nome,senha,role&ativo=eq.true") },
 };
 
-function toBase64(file) {
-  return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result.split(",")[1]); r.onerror = () => rej(new Error("Falha")); r.readAsDataURL(file); });
+function toBase64(file, maxWidth = 1200) {
+  return new Promise((res, rej) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      let w = img.width, h = img.height;
+      if (w > maxWidth) { h = Math.round(h * maxWidth / w); w = maxWidth; }
+      canvas.width = w; canvas.height = h;
+      canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+      const b64 = canvas.toDataURL("image/jpeg", 0.75).split(",")[1];
+      URL.revokeObjectURL(url);
+      res(b64);
+    };
+    img.onerror = rej;
+    img.src = url;
+  });
 }
 
 async function extractOSFromImage(base64, mediaType) {
@@ -55,8 +70,20 @@ async function extractOSFromImage(base64, mediaType) {
   return await r.json();
 }
 
-async function notifyWhatsApp(os) {
-  try { await fetch('/api/extract-os', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'notify_whatsapp', phone: os.fone, osData: { cliente: os.cliente, numero: os.numero, descricao: os.descricao } }) }); } catch (e) { console.error(e); }
+async function notifyWhatsApp(os, tipo) {
+  try {
+    let mensagem = "";
+    if (tipo === "aprovada") {
+      mensagem = `Olá ${os.cliente}! 😊\n\nSeu serviço foi *aprovado* e já está em produção na *Garimpo Jóias*.\n\n📋 *OS ${os.numero}*\n🔧 ${os.descricao}\n\nAssim que estiver pronto, avisamos! 💎\n\n📞 (13) 3284-2485`;
+    } else if (tipo === "retirada") {
+      mensagem = `Olá ${os.cliente}! 😊\n\nSua joia está *pronta para retirada* na *Garimpo Jóias*.\n\n📋 *OS ${os.numero}*\n🔧 ${os.descricao}\n\nEstamos aguardando sua visita! 💎\n\n📞 (13) 3284-2485`;
+    }
+    await fetch('/api/extract-os', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'notify_whatsapp', phone: os.fone, osData: { cliente: os.cliente, numero: os.numero, descricao: os.descricao, mensagem } })
+    });
+  } catch (e) { console.error('Erro WhatsApp:', e); }
 }
 
 async function runAutoArchive(list, setOsList) {
@@ -150,11 +177,11 @@ function OSModal({ onClose, onSave, userName }) {
     catch (e) { setErrorMsg(e.message); setPhase("error"); }
   }, [userName]);
   const handleFile2 = useCallback(async (file) => {
-    if (!file) return; setPreview2(URL.createObjectURL(file)); const b64 = await toBase64(file); setData(d => ({ ...d, foto_peca_base64: b64, foto_peca_type: file.type }));
+    if (!file) return; setPreview2(URL.createObjectURL(file)); const b64 = await toBase64(file, 800); setData(d => ({ ...d, foto_peca_base64: b64, foto_peca_type: "image/jpeg" }));
   }, []);
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "#3d2b1f70", backdropFilter: "blur(4px)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 999, padding: 0 }}>
+    <div style={{ position: "fixed", inset: 0, background: "#3d2b1f70", backdropFilter: "blur(4px)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 999 }}>
       <div style={{ background: nude.white, borderRadius: "20px 20px 0 0", width: "100%", maxWidth: 680, maxHeight: "95vh", overflow: "auto", padding: "24px 24px 40px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
           <span style={{ color: nude.text, fontFamily: "'Playfair Display', serif", fontSize: 20, fontWeight: 700 }}>Nova OS</span>
@@ -273,19 +300,19 @@ function Card({ item, onSelect, selected, onStatusChange, statusCfg, statusOrder
     <div onClick={() => onSelect(item)} style={{ background: selected ? "#fdf8f4" : nude.white, border: selected ? `2px solid ${cfg.color}` : `1px solid ${nude.border}`, borderLeft: `4px solid ${cfg.color}`, borderRadius: 14, padding: "18px 20px", cursor: "pointer", transition: "all 0.2s", marginBottom: 12, boxShadow: selected ? `0 4px 16px ${cfg.color}25` : `0 1px 4px #c4a98812` }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
         <div style={{ flex: 1, paddingRight: 10 }}>
-          {tagField && item[tagField] && <span style={{ color: "#c4956a", fontFamily: "'DM Mono', monospace", fontSize: 12, letterSpacing: "0.08em" }}>{item[tagField]}</span>}
-          <div style={{ color: nude.text, fontFamily: "'Playfair Display', serif", fontSize: 18, marginTop: tagField ? 2 : 0, fontWeight: 600 }}>{item[titleField]}</div>
-          {subtitleField && item[subtitleField] && <div style={{ color: nude.muted, fontSize: 13, fontFamily: "'DM Mono', monospace", marginTop: 4, lineHeight: 1.4 }}>{item[subtitleField]?.length > 55 ? item[subtitleField].slice(0, 55) + "…" : item[subtitleField]}</div>}
+          {tagField && item[tagField] && <span style={{ color: "#c4956a", fontFamily: "'DM Mono', monospace", fontSize: 14, letterSpacing: "0.06em", fontWeight: 600 }}>{item[tagField]}</span>}
+          <div style={{ color: nude.text, fontFamily: "'Playfair Display', serif", fontSize: 20, marginTop: tagField ? 2 : 0, fontWeight: 600 }}>{item[titleField]}</div>
+          {subtitleField && item[subtitleField] && <div style={{ color: nude.muted, fontSize: 14, fontFamily: "'DM Mono', monospace", marginTop: 5, lineHeight: 1.5 }}>{item[subtitleField]?.length > 55 ? item[subtitleField].slice(0, 55) + "…" : item[subtitleField]}</div>}
         </div>
         <Badge status={item.status} cfg={statusCfg} small />
       </div>
       {!readonly && (
         <div style={{ marginTop: 12 }}>
           <Pipeline current={item.status} order={statusOrder} cfg={statusCfg} onChange={(s) => onStatusChange(item.id, s)} />
-          {valueField && item[valueField] && <div style={{ marginTop: 8 }}><span style={{ color: "#7a9e87", fontFamily: "'DM Mono', monospace", fontSize: 13, fontWeight: 600 }}>R$ {item[valueField]}</span></div>}
+          {valueField && item[valueField] && <div style={{ marginTop: 8 }}><span style={{ color: "#7a9e87", fontFamily: "'DM Mono', monospace", fontSize: 14, fontWeight: 600 }}>R$ {item[valueField]}</span></div>}
         </div>
       )}
-      {readonly && valueField && item[valueField] && <div style={{ marginTop: 8 }}><span style={{ color: "#7a9e87", fontFamily: "'DM Mono', monospace", fontSize: 13, fontWeight: 600 }}>R$ {item[valueField]}</span></div>}
+      {readonly && valueField && item[valueField] && <div style={{ marginTop: 8 }}><span style={{ color: "#7a9e87", fontFamily: "'DM Mono', monospace", fontSize: 14, fontWeight: 600 }}>R$ {item[valueField]}</span></div>}
     </div>
   );
 }
@@ -304,8 +331,8 @@ function Detail({ item, onClose, onDelete, onStatusChange, onSave, statusCfg, st
     <div style={{ background: nude.white, border: `1px solid ${nude.border}`, borderRadius: 16, padding: 24, boxShadow: "0 2px 16px #c4a98815" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
         <div style={{ flex: 1 }}>
-          {item.numero && <div style={{ color: "#c4956a", fontFamily: "'DM Mono', monospace", fontSize: 12, letterSpacing: "0.1em", marginBottom: 4 }}>Nº {item.numero}</div>}
-          <div style={{ color: nude.text, fontFamily: "'Playfair Display', serif", fontSize: 22, fontWeight: 700, lineHeight: 1.2 }}>{editData.cliente || item.cliente}</div>
+          {item.numero && <div style={{ color: "#c4956a", fontFamily: "'DM Mono', monospace", fontSize: 14, letterSpacing: "0.1em", marginBottom: 4, fontWeight: 600 }}>Nº {item.numero}</div>}
+          <div style={{ color: nude.text, fontFamily: "'Playfair Display', serif", fontSize: 24, fontWeight: 700, lineHeight: 1.2 }}>{editData.cliente || item.cliente}</div>
           {item.recepcao && <div style={{ color: nude.muted, fontSize: 12, fontFamily: "'DM Mono', monospace", marginTop: 4 }}>por {item.recepcao}</div>}
         </div>
         <button onClick={onClose} style={{ background: nude.bg, border: "none", color: nude.muted, fontSize: 18, cursor: "pointer", width: 40, height: 40, borderRadius: 20, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>✕</button>
@@ -316,7 +343,7 @@ function Detail({ item, onClose, onDelete, onStatusChange, onSave, statusCfg, st
           <div key={key} style={{ gridColumn: full ? "span 2" : "span 1" }}>
             <div style={{ color: nude.muted, fontSize: 11, fontFamily: "'DM Mono', monospace", marginBottom: 5, letterSpacing: "0.06em" }}>{label}</div>
             {readonly
-              ? <div style={{ color: nude.text, fontSize: 14, fontFamily: "'DM Mono', monospace", lineHeight: 1.5 }}>{item[key] || "—"}</div>
+              ? <div style={{ color: nude.text, fontSize: key === "descricao" || key === "descricao_produto" ? 15 : 14, fontFamily: "'DM Mono', monospace", lineHeight: 1.6 }}>{item[key] || "—"}</div>
               : textarea
                 ? <textarea value={editData[key] || ""} rows={3} onChange={e => set(key)(e.target.value)} style={{ ...inputStyle, resize: "vertical" }} />
                 : <input value={editData[key] || ""} onChange={e => set(key)(e.target.value)} style={inputStyle} />
@@ -332,9 +359,9 @@ function Detail({ item, onClose, onDelete, onStatusChange, onSave, statusCfg, st
           {!confirmDelete
             ? <button onClick={() => setConfirmDelete(true)} style={{ background: "none", border: "1px solid #e8c4c0", color: "#c0392b", padding: "10px 18px", borderRadius: 10, cursor: "pointer", fontFamily: "'DM Mono', monospace", fontSize: 13 }}>🗑 Excluir</button>
             : <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                <span style={{ color: "#c0392b", fontSize: 13, fontFamily: "'DM Mono', monospace" }}>Confirma exclusão?</span>
-                <button onClick={() => onDelete(item.id)} style={{ background: "#c0392b", border: "none", color: "#fff", padding: "10px 18px", borderRadius: 10, cursor: "pointer", fontFamily: "'DM Mono', monospace", fontSize: 13, fontWeight: 700 }}>Sim</button>
-                <button onClick={() => setConfirmDelete(false)} style={{ background: nude.bg, border: `1px solid ${nude.border2}`, color: nude.muted, padding: "10px 18px", borderRadius: 10, cursor: "pointer", fontFamily: "'DM Mono', monospace", fontSize: 13 }}>Cancelar</button>
+                <span style={{ color: "#c0392b", fontSize: 13 }}>Confirma exclusão?</span>
+                <button onClick={() => onDelete(item.id)} style={{ background: "#c0392b", border: "none", color: "#fff", padding: "10px 18px", borderRadius: 10, cursor: "pointer", fontSize: 13, fontWeight: 700 }}>Sim</button>
+                <button onClick={() => setConfirmDelete(false)} style={{ background: nude.bg, border: `1px solid ${nude.border2}`, color: nude.muted, padding: "10px 18px", borderRadius: 10, cursor: "pointer", fontSize: 13 }}>Cancelar</button>
               </div>
           }
         </div>
@@ -390,7 +417,10 @@ export default function App() {
     const updates = { status: newStatus };
     if (newStatus === "Entregue") updates.data_entrega = new Date().toISOString();
     await dbRef.update(id, updates);
-    if (tab === "os" && newStatus === "Ag. Retirada" && item?.fone) await notifyWhatsApp(item);
+    if (tab === "os" && item?.fone) {
+      if (newStatus === "Aprovada") await notifyWhatsApp(item, "aprovada");
+      if (newStatus === "Ag. Retirada") await notifyWhatsApp(item, "retirada");
+    }
   };
 
   const handleSaveEdit = async (id, data) => {
@@ -420,7 +450,6 @@ export default function App() {
     const item = Array.isArray(saved) ? saved[0] : saved;
     setResList(list => [item, ...list]); setModal(null);
   };
-
   const handleOrcToOS = async (orc) => {
     const saved = await db.os.insert({ numero: orc.numero, cliente: orc.cliente, fone: orc.fone, descricao: orc.descricao, recepcao: orc.recepcao, data: orc.data, ac: orc.valor, obs: orc.obs, status: "Aberta" });
     const item = Array.isArray(saved) ? saved[0] : saved;
@@ -468,12 +497,13 @@ export default function App() {
 
   const inputStyle = { background: nude.bg, border: `1px solid ${nude.border}`, borderRadius: 10, padding: "10px 14px", color: nude.text, fontFamily: "'DM Mono', monospace", fontSize: 13, outline: "none" };
 
-  // Painel lateral no mobile vira overlay
   const DetailPanel = () => !selected ? null : (
     <div style={{ position: "fixed", inset: 0, zIndex: 100, display: "flex", alignItems: "flex-end" }} onClick={(e) => { if (e.target === e.currentTarget) { setSelected(null); setShowDetail(false); } }}>
       <div style={{ background: nude.bg, width: "100%", maxHeight: "92vh", overflowY: "auto", borderRadius: "20px 20px 0 0", padding: "20px 20px 40px", boxShadow: "0 -4px 32px #3d2b1f20" }}>
         <div style={{ width: 40, height: 4, background: nude.border2, borderRadius: 2, margin: "0 auto 20px" }} />
-        <Detail item={selected} onClose={() => { setSelected(null); setShowDetail(false); }} onDelete={handleDelete} onStatusChange={handleStatusChange} onSave={handleSaveEdit} statusCfg={tab === "hist" ? HIST_STATUS : tab === "log" ? LOG_STATUS : currentStatus} statusOrder={currentOrder} editFields={editFields} readonly={isHistTab} isMaster={isMaster}
+        <Detail item={selected} onClose={() => { setSelected(null); setShowDetail(false); }} onDelete={handleDelete} onStatusChange={handleStatusChange} onSave={handleSaveEdit}
+          statusCfg={tab === "hist" ? HIST_STATUS : tab === "log" ? LOG_STATUS : currentStatus}
+          statusOrder={currentOrder} editFields={editFields} readonly={isHistTab} isMaster={isMaster}
           extraAction={tab === "orc" && selected.status !== "Aprovado" && selected.status !== "Recusado" ? (
             <button onClick={() => handleOrcToOS(selected)} style={{ width: "100%", padding: "14px 0", background: `linear-gradient(135deg, ${nude.gold}, ${nude.gold2})`, border: "none", borderRadius: 12, color: "#fff", fontFamily: "'DM Mono', monospace", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>✓ Converter em OS</button>
           ) : null}
@@ -491,8 +521,6 @@ export default function App() {
         ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-track { background: #f5efe9; } ::-webkit-scrollbar-thumb { background: #e0d0c4; border-radius: 2px; }
       `}</style>
       <div style={{ minHeight: "100vh", background: "#faf7f4", color: nude.text, fontFamily: "'DM Mono', monospace" }}>
-
-        {/* Header */}
         <div style={{ borderBottom: `1px solid ${nude.border}`, padding: "12px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", background: nude.white, position: "sticky", top: 0, zIndex: 50 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <div style={{ width: 38, height: 38, borderRadius: 10, background: `linear-gradient(135deg, ${nude.gold}, ${nude.gold2})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>💎</div>
@@ -507,11 +535,10 @@ export default function App() {
                 {tab === "os" ? "+ OS" : tab === "orc" ? "+ Orçamento" : "+ Reserva"}
               </button>
             )}
-            <button onClick={() => { sessionStorage.removeItem("garimpo_user"); setUser(null); }} style={{ background: "none", border: `1px solid ${nude.border}`, color: nude.muted, padding: "8px 12px", borderRadius: 10, cursor: "pointer", fontFamily: "'DM Mono', monospace", fontSize: 12 }}>Sair</button>
+            <button onClick={() => { sessionStorage.removeItem("garimpo_user"); setUser(null); }} style={{ background: "none", border: `1px solid ${nude.border}`, color: nude.muted, padding: "8px 12px", borderRadius: 10, cursor: "pointer", fontSize: 12 }}>Sair</button>
           </div>
         </div>
 
-        {/* Tabs */}
         <div style={{ display: "flex", background: nude.white, borderBottom: `1px solid ${nude.border}`, overflowX: "auto" }}>
           {tabCfg.map(t => (
             <button key={t.key} onClick={() => setTab(t.key)} style={{ padding: "14px 18px", border: "none", background: "transparent", cursor: "pointer", fontFamily: "'DM Mono', monospace", fontSize: 13, fontWeight: tab === t.key ? 700 : 400, color: tab === t.key ? nude.gold2 : nude.muted, borderBottom: tab === t.key ? `3px solid ${nude.gold2}` : "3px solid transparent", whiteSpace: "nowrap" }}>
@@ -520,7 +547,6 @@ export default function App() {
           ))}
         </div>
 
-        {/* Filtros */}
         {!isHistTab && (
           <div style={{ background: nude.white, borderBottom: `1px solid ${nude.border}` }}>
             <div style={{ display: "flex", overflowX: "auto" }}>
@@ -550,7 +576,6 @@ export default function App() {
           </div>
         )}
 
-        {/* Lista */}
         {loading ? (
           <div style={{ textAlign: "center", padding: 60, color: nude.muted, fontSize: 14 }}>Carregando…</div>
         ) : (
@@ -572,7 +597,6 @@ export default function App() {
           </div>
         )}
       </div>
-
       {showDetail && selected && <DetailPanel />}
       {modal === "os"  && <OSModal  onClose={() => setModal(null)} onSave={handleSaveOS} userName={user.nome} />}
       {modal === "orc" && <OrcModal onClose={() => setModal(null)} onSave={handleSaveOrc} userName={user.nome} />}
